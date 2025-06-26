@@ -1,106 +1,81 @@
+import streamlit as st
 import pickle
-import numpy as np
 import pandas as pd
-from catboost import Pool
+import numpy as np
 from sklearn.preprocessing import LabelEncoder
 
-# Load model from file
-with open("catboost_model.sav", 'rb') as file:
+# === Load model ===
+with open("catboost_model.sav", "rb") as file:
     model = pickle.load(file)
 
-# === Training-based LabelEncoder setup ===
+# === Build encoders ===
 def build_label_encoders():
     encoders = {}
 
-    # Hardcoded from training CSV
-    cryosleep_classes = ['False', 'True']
-    cabin_classes = [  # Trimmed example — add more if needed or load from training data
-        'B/0/P', 'B/0/S', 'B/100/S', 'F/1/S', 'nan'
-    ]
-    destination_classes = ['55 Cancri e', 'PSO J318.5-22', 'TRAPPIST-1e', 'nan']
-    vip_classes = ['False', 'True']
-
-    def make_encoder(classes):
-        le = LabelEncoder()
-        le.fit(classes)
-        return le
-    
     encoders['HomePlanet'] = LabelEncoder().fit(['Earth', 'Europa', 'Mars', 'nan'])
-    encoders['CryoSleep'] = make_encoder(cryosleep_classes)
-    encoders['Cabin'] = make_encoder(cabin_classes)
-    encoders['Destination'] = make_encoder(destination_classes)
-    encoders['VIP'] = make_encoder(vip_classes)
+    encoders['CryoSleep'] = LabelEncoder().fit(['False', 'True'])
+    encoders['Cabin'] = LabelEncoder().fit(['B/0/P', 'B/0/S', 'B/100/S', 'F/1/S', 'nan'])
+    encoders['Destination'] = LabelEncoder().fit(['55 Cancri e', 'PSO J318.5-22', 'TRAPPIST-1e', 'nan'])
+    encoders['VIP'] = LabelEncoder().fit(['False', 'True'])
 
     return encoders
 
 encoders = build_label_encoders()
 
-# === Encoding logic ===
+# === Encode inputs ===
 def encode_input(raw_input, encoders):
     encoded = {}
     for key, value in raw_input.items():
         if key in encoders:
             val_str = str(value)
             encoder = encoders[key]
-            if val_str in encoder.classes_:
-                encoded[key] = encoder.transform([val_str])[0]
-            else:
-                encoded[key] = encoder.transform(['nan'])[0]
+            encoded[key] = encoder.transform([val_str])[0] if val_str in encoder.classes_ else encoder.transform(['nan'])[0]
         else:
             encoded[key] = value
     return encoded
 
-# === Input handling ===
-def get_string(prompt, options=None):
-    while True:
-        val = input(prompt).strip()
-        if options and val not in options:
-            print(f"Invalid. Choose from {options}")
-        else:
-            return val
+# === Streamlit UI ===
+st.set_page_config(page_title="CatBoost Transport Predictor", layout="centered")
+st.title("🚀 Passenger Transport Predictor")
+st.markdown("Fill in passenger details to predict if they were transported!")
 
-def get_yes_no(prompt):
-    while True:
-        val = input(prompt + " (yes/no): ").strip().lower()
-        if val in ["yes", "no"]:
-            return 'True' if val == 'yes' else 'False'
-        print("Enter yes or no.")
+with st.form("prediction_form"):
+    home_planet = st.selectbox("HomePlanet", ["Earth", "Europa", "Mars"])
+    cryo_sleep = st.radio("CryoSleep", ["yes", "no"])
+    cabin = st.text_input("Cabin (e.g., F/1/S)", "F/1/S")
+    destination = st.selectbox("Destination", ["TRAPPIST-1e", "55 Cancri e", "PSO J318.5-22"])
+    age = st.number_input("Age", min_value=0.0, max_value=100.0, step=1.0)
+    vip = st.radio("VIP", ["yes", "no"])
 
-def get_float(prompt):
-    while True:
-        try:
-            return float(input(prompt))
-        except ValueError:
-            print("Invalid number. Try again.")
+    room_service = st.number_input("RoomService", min_value=0.0, step=1.0)
+    food_court = st.number_input("FoodCourt", min_value=0.0, step=1.0)
+    shopping_mall = st.number_input("ShoppingMall", min_value=0.0, step=1.0)
+    spa = st.number_input("Spa", min_value=0.0, step=1.0)
+    vr_deck = st.number_input("VRDeck", min_value=0.0, step=1.0)
 
-# === Main input ===
-def collect_user_input():
-    print("\n📋 Enter passenger details:\n")
-    data = {
-        "HomePlanet": get_string("HomePlanet (Europa/Earth/Mars): ", ["Europa", "Earth", "Mars"]),
-        "CryoSleep": get_yes_no("Was the passenger in CryoSleep?"),
-        "Cabin": get_string("Cabin (e.g., B/0/P, F/1/S): "),
-        "Destination": get_string("Destination (TRAPPIST-1e/55 Cancri e/PSO J318.5-22): ",
-                                  ["TRAPPIST-1e", "55 Cancri e", "PSO J318.5-22"]),
-        "Age": get_float("Age: "),
-        "VIP": get_yes_no("Is the passenger a VIP?"),
-        "RoomService": get_float("RoomService spending: "),
-        "FoodCourt": get_float("FoodCourt spending: "),
-        "ShoppingMall": get_float("ShoppingMall spending: "),
-        "Spa": get_float("Spa spending: "),
-        "VRDeck": get_float("VRDeck spending: ")
+    submitted = st.form_submit_button("Predict")
+
+if submitted:
+    input_dict = {
+        "HomePlanet": home_planet,
+        "CryoSleep": "True" if cryo_sleep == "yes" else "False",
+        "Cabin": cabin,
+        "Destination": destination,
+        "Age": age,
+        "VIP": "True" if vip == "yes" else "False",
+        "RoomService": room_service,
+        "FoodCourt": food_court,
+        "ShoppingMall": shopping_mall,
+        "Spa": spa,
+        "VRDeck": vr_deck
     }
-    return data
 
-# === Main ===
-if __name__ == "__main__":
-    raw_input_data = collect_user_input()
-    encoded_data = encode_input(raw_input_data, encoders)
-
-    # Convert to DataFrame
-    df = pd.DataFrame([encoded_data])
-
-    # Predict
+    encoded_input = encode_input(input_dict, encoders)
+    df = pd.DataFrame([encoded_input])
     prediction = model.predict(df)[0]
-    print("\n🚀 Prediction Result 🚀")
-    print("✅ The Passenger was TRANSPORTED!" if prediction else "❌ The Passenger was NOT transported.")
+
+    st.subheader("🎯 Prediction Result:")
+    if prediction:
+        st.success("✅ The Passenger was TRANSPORTED!")
+    else:
+        st.error("❌ The Passenger was NOT transported.")
