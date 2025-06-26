@@ -5,8 +5,7 @@ from catboost import Pool
 from sklearn.preprocessing import LabelEncoder
 
 # Load model from file
-model_path = r"C:\Users\adwai\Documents\ipynbs from Anaconda\😺Boost\catboost_model.sav"
-with open(model_path, 'rb') as file:
+with open("catboost_model.sav", 'rb') as file:
     model = pickle.load(file)
 
 # === Training-based LabelEncoder setup ===
